@@ -46,5 +46,5 @@ export async function POST(req: Request) {
   if (method === "cod") { await announceNewOrder({ ...o, restaurants: r }); return NextResponse.json({ ok: true, code: o.code }); }
   const pay = await createOrderPayment(o, u.id);
   if (!pay.ok) { await db().from("orders").update({ status: "cancelled", cancel_reason: "Payment unavailable" }).eq("id", o.id); return NextResponse.json({ ok: false, error: "unavailable" }, { status: 503 }); }
-  return NextResponse.json({ ok: true, code: o.code, ...pay, name: clean(b.name, 80), phone });
+  return NextResponse.json({ ...pay, code: o.code, name: clean(b.name, 80), phone });
 }

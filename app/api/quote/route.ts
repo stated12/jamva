@@ -12,5 +12,5 @@ export async function POST(req: Request) {
   const from = r.lat && r.lng ? { lat: r.lat, lng: r.lng } : (r as any).areas;
   if (!from) return NextResponse.json({ ok: false }, { status: 409 });
   const fees = await getFees(); const q = quote(fees, from, { lat, lng }, Math.max(0, Math.floor(Number(b.subtotalPaise) || 0)));
-  return NextResponse.json(q.ok ? { ok: true, ...q } : { ok: false, far: true, distance: q.distance, max: fees.max_km });
+  return NextResponse.json(q.ok ? q : { ok: false, far: true, distance: q.distance, max: fees.max_km });
 }
