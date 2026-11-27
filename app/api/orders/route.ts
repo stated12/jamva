@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { findArea } from "@/lib/data";
 import { currentUser } from "@/lib/supabase-server";
 import { allow } from "@/lib/ratelimit";
 import { getFees, quote } from "@/lib/pricing";
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
   if (subtotal < (r.min_order_paise || 0)) return NextResponse.json({ ok: false, error: "min", min: r.min_order_paise }, { status: 409 });
   const a = b.address || {}; const phone = normPhone(clean(b.phone, 20)); if (!isPhone(phone)) return NextResponse.json({ ok: false, error: "phone" }, { status: 400 });
   const line1 = clean(a.line1, 200); if (line1.length < 5) return NextResponse.json({ ok: false, error: "address" }, { status: 400 });
-  const { data: area } = await db().from("areas").select("*").eq("slug", String(a.areaSlug || "")).maybeSingle();
+  const area = await findArea(String(a.areaSlug || ""));
   let lat = Number(a.lat), lng = Number(a.lng);
   if (!(lat > AMD.minLat && lat < AMD.maxLat && lng > AMD.minLng && lng < AMD.maxLng)) { if (!area) return NextResponse.json({ ok: false, error: "area" }, { status: 400 }); lat = area.lat; lng = area.lng; }
   const from = r.lat && r.lng ? { lat: r.lat, lng: r.lng } : r.areas ? { lat: r.areas.lat, lng: r.areas.lng } : null;

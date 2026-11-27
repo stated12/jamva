@@ -9,7 +9,7 @@ import { notify, notifyAdmins } from "@/lib/notify";
 import { getDriverCfg, requireDriver, announceToDrivers } from "@/lib/drivers";
 import { setOrderStatus } from "@/lib/orders";
 import { createAccount } from "../actions";
-import { resolveCity } from "@/lib/data";
+import { resolveCity, findArea } from "@/lib/data";
 
 export async function registerDriver(fd: FormData) {
   if (!(await allow("driver-register", 6, 3600))) redirect("/driver/register?e=rate");
@@ -28,7 +28,7 @@ export async function registerDriver(fd: FormData) {
   if (!user) redirect("/login?next=/driver/register");
   const { data: existing } = await db().from("drivers").select("id").eq("user_id", user.id).maybeSingle();
   if (existing) redirect("/driver");
-  const { data: area } = await db().from("areas").select("id").eq("slug", areaSlug).maybeSingle(); if (!area) redirect("/driver/register?e=invalid");
+  const area = await findArea(areaSlug); if (!area) redirect("/driver/register?e=invalid");
   const { error } = await db().from("drivers").insert({ user_id: user.id, name, phone, vehicle, vehicle_no: vehicleNo, licence_no: licence || null, licence_status: licStatus, shift, city: geo.name, pincode: clean(fd.get("pincode"), 6).replace(/\D/g, "") || null, area_id: area.id, upi_id: upi || null });
   if (error) redirect("/driver/register?e=save");
   await db().from("profiles").update({ phone, full_name: name }).eq("id", user.id);

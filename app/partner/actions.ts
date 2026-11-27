@@ -10,7 +10,7 @@ import { notifyAdmins } from "@/lib/notify";
 import { requireRestaurant } from "@/lib/session";
 import { setOrderStatus, NEXT_STATUS } from "@/lib/orders";
 import { createAccount } from "../actions";
-import { resolveCity } from "@/lib/data";
+import { resolveCity, findArea } from "@/lib/data";
 const KINDS: Record<string, string> = { "Restaurant": "restaurant", "Cloud Kitchen": "cloud_kitchen", "Cafe / Bakery": "cafe_bakery" };
 const AMD = { minLat: 22.85, maxLat: 23.25, minLng: 72.35, maxLng: 72.75 };
 const inAmd = (lat: number, lng: number) => lat > AMD.minLat && lat < AMD.maxLat && lng > AMD.minLng && lng < AMD.maxLng;
@@ -32,7 +32,7 @@ export async function registerRestaurant(fd: FormData) {
   if (!user) redirect("/login?next=/partner/register");
   const { data: existing } = await db().from("restaurants").select("id").eq("owner_id", user.id).limit(1).maybeSingle();
   if (existing) redirect("/partner/dashboard");
-  const { data: area } = await db().from("areas").select("id,lat,lng").eq("slug", areaSlug).maybeSingle(); if (!area) redirect("/partner/register?e=invalid");
+  const area = await findArea(areaSlug); if (!area) redirect("/partner/register?e=invalid");
   let slug = slugify(name); const { data: clash } = await db().from("restaurants").select("id").eq("slug", slug).maybeSingle(); if (clash) slug += "-" + Math.random().toString(36).slice(2, 5);
   const cuisines = clean(fd.get("cuisines"), 120).split(",").map((s) => s.trim()).filter(Boolean).slice(0, 6);
   const logo = await uploadImage(fd.get("logo"), "logos"), cover = await uploadImage(fd.get("cover"), "covers");
@@ -109,7 +109,7 @@ export async function registerVendor(fd: FormData) {
   if (!user) redirect("/login?next=/street-vendors/join");
   const { data: existing } = await db().from("restaurants").select("id").eq("owner_id", user.id).limit(1).maybeSingle();
   if (existing) redirect("/partner/dashboard");
-  const { data: area } = await db().from("areas").select("id,lat,lng").eq("slug", areaSlug).maybeSingle(); if (!area) redirect("/street-vendors/join?e=invalid");
+  const area = await findArea(areaSlug); if (!area) redirect("/street-vendors/join?e=invalid");
   const glat = Number(fd.get("lat")), glng = Number(fd.get("lng")); const pinned = inAmd(glat, glng);
   let slug = slugify(name); const { data: clash } = await db().from("restaurants").select("id").eq("slug", slug).maybeSingle(); if (clash) slug += "-" + Math.random().toString(36).slice(2, 5);
   const cuisines = clean(fd.get("cuisines"), 120).split(",").map((s) => s.trim()).filter(Boolean).slice(0, 6);

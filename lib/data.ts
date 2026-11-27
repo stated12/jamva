@@ -27,13 +27,20 @@ export async function getRestaurant(slug: string) {
 }
 /** Active areas. If the table is empty (seed SQL not run yet) the built-in Ahmedabad areas are saved first, so registration forms always work. */
 export async function listAreas(): Promise<any[]> {
-  const read = async () => (await db().from("areas").select("*").eq("is_active", true).order("sort_order")).data || [];
-  let rows: any[] = await read();
+  const read = async () => { const { data, error } = await db().from("areas").select("*").eq("is_active", true).order("sort_order"); if (error) console.error("[areas] read failed:", error.message); return data || []; };
+  let rows: any[] = [];
+  try { rows = await read(); } catch (e: any) { console.error("[areas]", e?.message || e); }
   if (!rows.length) {
-    await db().from("areas").upsert(SEED_AREAS.map(([slug, name, lat, lng], i) => ({ slug, name, lat, lng, sort_order: i + 1 })), { onConflict: "slug" });
-    rows = await read();
+    try { const { error } = await db().from("areas").upsert(SEED_AREAS.map(([slug, name, lat, lng], i) => ({ slug, name, lat, lng, sort_order: i + 1 })), { onConflict: "slug" }); if (error) console.error("[areas] seed failed:", error.message); rows = await read(); } catch (e: any) { console.error("[areas]", e?.message || e); }
   }
+  // Last resort: built-in list, so a form can never show an empty dropdown.
+  if (!rows.length) rows = SEED_AREAS.map(([slug, name, lat, lng], i) => ({ id: null, slug, name, lat, lng, sort_order: i + 1 }));
   return rows;
+}
+/** One area by slug: from the database, or the built-in list when the database has none (id is then null). */
+export async function findArea(slug: string): Promise<{ id: string | null; slug: string; name: string; lat: number; lng: number } | null> {
+  try { const { data } = await db().from("areas").select("id,slug,name,lat,lng").eq("slug", slug).maybeSingle(); if (data) return data; } catch { /* fall through */ }
+  const s = SEED_AREAS.find((a) => a[0] === slug); return s ? { id: null, slug: s[0], name: s[1], lat: s[2], lng: s[3] } : null;
 }
 export type City = { slug: string; name: string; state: string | null; status: string };
 export async function listCities(): Promise<City[]> {
