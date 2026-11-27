@@ -34,3 +34,10 @@ Order alerts for restaurants and customers go to every channel you configure: in
 ## Phase 1 limits (be honest with restaurants)
 - Delivery handover: until the driver app is live, the restaurant (or admin) marks "Handed to rider" and "Delivered".
 - Restaurant payouts: orders are paid to your Razorpay account. Pay restaurants by bank transfer on a weekly schedule until Razorpay Route is set up.
+
+## Rider (delivery partner) app
+1. Run `supabase/03_drivers.sql` once in the Supabase SQL editor (after 01 and 02). Safe to re-run.
+2. Riders sign up at `/driver/register`, you approve them in **Admin > Riders**, then they open `/driver`, go online and take deliveries.
+3. Flow: restaurant accepts, online riders are alerted, a rider taps Take it (atomic, one rider only), picks up when the kitchen marks Ready, delivers. Cash-on-delivery is confirmed by the rider at delivery.
+4. Rider pay = share of the delivery fee before GST (Admin > Fees & settings > Rider pay). Record weekly payouts and cash handed in under Admin > Riders. Admin can also assign or unassign a rider on any order (Admin > Orders).
+5. The restaurant and admin "Handed to rider / Delivered" buttons still work as a fallback.

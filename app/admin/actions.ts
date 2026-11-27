@@ -6,6 +6,7 @@ import { clean, todayIST } from "@/lib/format";
 import { getListing } from "@/lib/pricing";
 import { notify } from "@/lib/notify";
 import { refundOrder, setOrderStatus } from "@/lib/orders";
+import { announceToDrivers } from "@/lib/drivers";
 export async function restaurantDecision(fd: FormData) {
   await requireAdmin(); const id = clean(fd.get("id"), 40), act = clean(fd.get("act"), 20), note = clean(fd.get("note"), 300) || null;
   const { data: r } = await db().from("restaurants").select("id,name,owner_id,trial_until").eq("id", id).maybeSingle(); if (!r) return;
@@ -30,5 +31,38 @@ export async function saveSettings(fd: FormData) {
   const tiers = [2, 4, 6, 8].map((km, i) => ({ upto_km: Number(fd.get("km" + i)) || km, fee: Math.max(0, Number(fd.get("fee" + i)) || 0) })).sort((a, b) => a.upto_km - b.upto_km);
   const fees = { tiers, max_km: tiers[tiers.length - 1].upto_km, gst_percent: Math.max(0, Number(fd.get("gst")) || 0), small_order_below: 0, cod_enabled: fd.get("cod") === "on", online_enabled: fd.get("online") === "on" };
   const listing = { yearly_fee: Math.max(0, Number(fd.get("yearly_fee")) || 0), gst_percent: Math.max(0, Number(fd.get("listing_gst")) || 0), trial_days: Math.max(0, Math.floor(Number(fd.get("trial_days")) || 0)) };
-  await db().from("settings").upsert([{ key: "fees", value: fees }, { key: "listing", value: listing }], { onConflict: "key" }); revalidatePath("/admin/settings");
+  const driver = { pay_percent: Math.min(100, Math.max(0, Number(fd.get("pay_percent")) || 0)), min_pay: Math.max(0, Number(fd.get("min_pay")) || 0), max_active: Math.min(5, Math.max(1, Math.floor(Number(fd.get("max_active")) || 2))) };
+  await db().from("settings").upsert([{ key: "fees", value: fees }, { key: "listing", value: listing }, { key: "driver", value: driver }], { onConflict: "key" }); revalidatePath("/admin/settings");
+}
+export async function driverDecision(fd: FormData) {
+  await requireAdmin(); const id = clean(fd.get("id"), 40), act = clean(fd.get("act"), 20), note = clean(fd.get("note"), 300) || null;
+  const { data: d } = await db().from("drivers").select("id,name,user_id").eq("id", id).maybeSingle(); if (!d) return;
+  if (act === "approve") {
+    await db().from("drivers").update({ status: "active", approved_at: new Date().toISOString(), admin_note: note }).eq("id", id);
+    await notify(d.user_id, { title: "You are approved as a Jamva rider", body: "Open the rider app, go online and take your first delivery.", href: "/driver" });
+  } else if (act === "block") {
+    await db().from("drivers").update({ status: "blocked", is_online: false, admin_note: note }).eq("id", id);
+    await notify(d.user_id, { title: "Your rider account is not active", body: note || "Please contact Jamva support.", href: "/driver" });
+  }
+  revalidatePath("/admin/drivers");
+}
+export async function driverLedgerEntry(fd: FormData) {
+  await requireAdmin(); const id = clean(fd.get("id"), 40), kind = clean(fd.get("kind"), 20), amount = Math.round(Number(fd.get("amount")) * 100);
+  if (!["payout", "cash_deposit"].includes(kind) || !(amount > 0) || amount > 100000000) return;
+  const { data: d } = await db().from("drivers").select("id,user_id").eq("id", id).maybeSingle(); if (!d) return;
+  await db().from("driver_ledger").insert({ driver_id: id, kind, amount_paise: amount, note: clean(fd.get("note"), 120) || null });
+  await notify(d.user_id, { title: kind === "payout" ? "Payout sent to you" : "Cash deposit recorded", body: `₹${(amount / 100).toLocaleString("en-IN")} recorded in your earnings.`, href: "/driver/earnings" });
+  revalidatePath("/admin/drivers");
+}
+export async function adminAssignDriver(fd: FormData) {
+  await requireAdmin(); const id = clean(fd.get("id"), 40), driverId = clean(fd.get("driver_id"), 40);
+  const { data: o } = await db().from("orders").select("id,code,status,customer_id,delivery_fee_paise,address,restaurants:jm_restaurants(name)").eq("id", id).maybeSingle();
+  if (!o || !["accepted", "preparing", "ready", "picked_up"].includes(o.status)) return;
+  if (!driverId) { await db().from("orders").update({ driver_id: null, driver_assigned_at: null }).eq("id", id); if (o.status !== "picked_up") await announceToDrivers(o); revalidatePath("/admin/orders"); return; }
+  const { data: d } = await db().from("drivers").select("id,name,user_id,status").eq("id", driverId).maybeSingle(); if (!d || d.status !== "active") return;
+  await db().from("orders").update({ driver_id: d.id, driver_assigned_at: new Date().toISOString() }).eq("id", id);
+  await db().from("order_events").insert({ order_id: id, status: o.status, note: `Rider assigned by Jamva: ${d.name}` });
+  await notify(d.user_id, { title: `Delivery ${o.code} assigned to you`, body: `Pick up from ${o.restaurants?.name || "the restaurant"}.`, href: "/driver" });
+  await notify(o.customer_id, { title: `Order ${o.code}: ${d.name} will deliver it`, body: "You can call your rider from the order page.", href: `/order/${o.code}` });
+  revalidatePath("/admin/orders");
 }

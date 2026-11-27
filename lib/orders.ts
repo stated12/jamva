@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { notify, whatsappOrder } from "./notify";
 import { rupees } from "./format";
+import { announceToDrivers, getDriverCfg, riderPay } from "./drivers";
 /** Marks an online order as paid and tells the restaurant. Idempotent: running it twice does nothing the second time. */
 export async function markOrderPaid(orderId: string, paymentId: string) {
   const { data: o } = await db().from("orders").select("*, restaurants:jm_restaurants(owner_id,name,whatsapp,phone)").eq("id", orderId).maybeSingle();
@@ -29,12 +30,22 @@ export async function setOrderStatus(orderId: string, status: string, note?: str
   const patch: Record<string, any> = { status };
   if (status === "accepted") patch.accepted_at = new Date().toISOString();
   if (status === "ready") patch.ready_at = new Date().toISOString();
+  if (status === "picked_up") patch.picked_up_at = new Date().toISOString();
   if (status === "delivered") { patch.delivered_at = new Date().toISOString(); }
-  const { data: o } = await db().from("orders").update(patch).eq("id", orderId).select("id,code,customer_id,payment_method,payment_status,restaurants:jm_restaurants(name)").single();
+  const { data: o } = await db().from("orders").update(patch).eq("id", orderId).select("id,code,customer_id,driver_id,delivery_fee_paise,address,payment_method,payment_status,restaurants:jm_restaurants(name)").single();
   if (!o) return;
   if (status === "delivered" && o.payment_method === "cod") await db().from("orders").update({ payment_status: "cod_collected" }).eq("id", orderId);
+  if (status === "delivered" && o.driver_id) await db().from("orders").update({ driver_pay_paise: riderPay(o.delivery_fee_paise, await getDriverCfg()) }).eq("id", orderId);
   await db().from("order_events").insert({ order_id: orderId, status, note: note || null });
   const msg: Record<string, string> = { accepted: "accepted your order", preparing: "is preparing your food", ready: "has your order ready for pickup", picked_up: "Your order is on its way", delivered: "Your order was delivered. Enjoy your meal!", rejected: "could not accept your order", cancelled: "Order cancelled" };
   if (msg[status]) await notify(o.customer_id, { title: `Order ${o.code}: ${status === "picked_up" || status === "delivered" || status === "cancelled" ? msg[status] : `${(o as any).restaurants?.name || "Restaurant"} ${msg[status]}`}`, body: note || undefined, href: `/order/${o.code}` });
+  // Rider side: offer new orders to riders, tell the assigned rider when food is ready, release them if the order dies.
+  const riderUser = o.driver_id ? (await db().from("drivers").select("user_id").eq("id", o.driver_id).maybeSingle()).data?.user_id : null;
+  if (status === "accepted" && !o.driver_id) await announceToDrivers(o);
+  if (status === "ready") {
+    if (riderUser) await notify(riderUser, { title: `Order ${o.code} is ready`, body: `Pick it up from ${o.restaurants?.name || "the restaurant"}.`, href: "/driver" });
+    else await announceToDrivers(o);
+  }
+  if ((status === "rejected" || status === "cancelled") && riderUser) await notify(riderUser, { title: `Order ${o.code} was cancelled`, body: "No pickup needed. Nothing is owed by you.", href: "/driver" });
   if ((status === "rejected" || status === "cancelled") && o.payment_status === "paid") await refundOrder(orderId);
 }
