@@ -1,0 +1,25 @@
+name: Unpack project zip
+on:
+  workflow_dispatch:
+  push:
+    paths: ["jamva-*.zip"]
+permissions:
+  contents: write
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unzip and copy into the repo
+        run: |
+          set -e
+          Z=$(ls jamva-*.zip | head -n 1)
+          D=$(mktemp -d)
+          unzip -q "$Z" -d "$D"
+          # if the zip holds a single top-level folder, use its contents
+          if [ "$(ls -A "$D" | wc -l)" = "1" ] && [ -d "$D/$(ls -A "$D")" ]; then D="$D/$(ls -A "$D")"; fi
+          cp -a "$D/." .
+          rm -f "$Z"
+          git config user.name "unpack-bot"; git config user.email "bot@users.noreply.github.com"
+          git add -A; git commit -m "Unpack $Z" || echo "nothing to commit"
+          git push
