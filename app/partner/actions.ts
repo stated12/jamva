@@ -10,12 +10,17 @@ import { notifyAdmins } from "@/lib/notify";
 import { requireRestaurant } from "@/lib/session";
 import { setOrderStatus, NEXT_STATUS } from "@/lib/orders";
 import { createAccount } from "../actions";
+import { resolveCity } from "@/lib/data";
+const KINDS: Record<string, string> = { "Restaurant": "restaurant", "Cloud Kitchen": "cloud_kitchen", "Cafe / Bakery": "cafe_bakery" };
+const AMD = { minLat: 22.85, maxLat: 23.25, minLng: 72.35, maxLng: 72.75 };
+const inAmd = (lat: number, lng: number) => lat > AMD.minLat && lat < AMD.maxLat && lng > AMD.minLng && lng < AMD.maxLng;
 
 export async function registerRestaurant(fd: FormData) {
   if (!(await allow("partner-register", 6, 3600))) redirect("/partner/register?e=rate");
   let user = await currentUser();
   const email = clean(fd.get("email"), 120).toLowerCase(), password = String(fd.get("password") || ""), owner = clean(fd.get("owner_name"), 80), phone = normPhone(clean(fd.get("phone"), 20));
   const name = clean(fd.get("name"), 80), address = clean(fd.get("address"), 240), areaSlug = clean(fd.get("area"), 40), fssai = clean(fd.get("fssai_no"), 20).replace(/\s/g, "");
+  const geo = await resolveCity(clean(fd.get("city"), 60)); if (!geo.live) redirect("/partner/register?city=" + encodeURIComponent(geo.name));
   if (name.length < 2 || address.length < 8 || !isPhone(phone) || !areaSlug) redirect("/partner/register?e=invalid");
   if (!/^\d{14}$/.test(fssai)) redirect("/partner/register?e=fssai");
   if (!user) {
@@ -33,7 +38,7 @@ export async function registerRestaurant(fd: FormData) {
   const logo = await uploadImage(fd.get("logo"), "logos"), cover = await uploadImage(fd.get("cover"), "covers");
   const { error } = await db().from("restaurants").insert({ owner_id: user.id, slug, name, tagline: clean(fd.get("tagline"), 100) || null, description: clean(fd.get("description"), 600) || null, cuisines, area_id: area.id, address, lat: area.lat, lng: area.lng,
     phone, whatsapp: normPhone(clean(fd.get("whatsapp"), 20)) || phone, contact_email: clean(fd.get("contact_email"), 120) || email || null, fssai_no: fssai, gstin: clean(fd.get("gstin"), 15).toUpperCase() || null, owner_name: owner || null,
-    veg_only: fd.get("veg_only") === "on", logo_url: logo, cover_url: cover });
+    veg_only: fd.get("veg_only") === "on", logo_url: logo, cover_url: cover, kind: KINDS[clean(fd.get("category"), 30)] || "restaurant", city: geo.name, pincode: clean(fd.get("pincode"), 6).replace(/\D/g, "") || null });
   if (error) redirect("/partner/register?e=save");
   await db().from("profiles").update({ phone, full_name: owner || undefined }).eq("id", user.id);
   await notifyAdmins({ title: "New restaurant application", body: `${name} (${areaSlug})`, href: "/admin/restaurants" });
@@ -83,4 +88,45 @@ export async function orderAction(fd: FormData) {
   else if (act === "pickup" && o.status === "ready") await setOrderStatus(o.id, "picked_up");
   else if (act === "delivered" && o.status === "picked_up") await setOrderStatus(o.id, "delivered");
   revalidatePath("/partner/dashboard");
+}
+
+/** Easy street-vendor sign-up: name, phone, stall, area, landmark and (optionally) a GPS pin. FSSAI can be added later with Jamva's help. */
+export async function registerVendor(fd: FormData) {
+  if (!(await allow("vendor-register", 6, 3600))) redirect("/street-vendors/join?e=rate");
+  const geo = await resolveCity(clean(fd.get("city"), 60)); if (!geo.live) redirect("/street-vendors/join?city=" + encodeURIComponent(geo.name));
+  let user = await currentUser();
+  const email = clean(fd.get("email"), 120).toLowerCase(), password = String(fd.get("password") || ""), owner = clean(fd.get("owner_name"), 80), phone = normPhone(clean(fd.get("phone"), 20));
+  const name = clean(fd.get("name"), 80), areaSlug = clean(fd.get("area"), 40), landmark = clean(fd.get("landmark"), 120), fssaiStatus = ["have", "applied", "help"].includes(clean(fd.get("fssai_status"), 10)) ? clean(fd.get("fssai_status"), 10) : "help";
+  const fssai = clean(fd.get("fssai_no"), 20).replace(/\s/g, "");
+  if (name.length < 2 || !isPhone(phone) || !areaSlug || landmark.length < 3) redirect("/street-vendors/join?e=invalid");
+  if (fssaiStatus === "have" && !/^\d{14}$/.test(fssai)) redirect("/street-vendors/join?e=fssai");
+  if (!user) {
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || password.length < 8 || owner.length < 2) redirect("/street-vendors/join?e=invalid");
+    const err = await createAccount(email, password, owner, phone); if (err) redirect("/street-vendors/join?e=" + err);
+    const { error } = await (await authClient()).auth.signInWithPassword({ email, password }); if (error) redirect("/login?next=/street-vendors/join");
+    user = await currentUser();
+  }
+  if (!user) redirect("/login?next=/street-vendors/join");
+  const { data: existing } = await db().from("restaurants").select("id").eq("owner_id", user.id).limit(1).maybeSingle();
+  if (existing) redirect("/partner/dashboard");
+  const { data: area } = await db().from("areas").select("id,lat,lng").eq("slug", areaSlug).maybeSingle(); if (!area) redirect("/street-vendors/join?e=invalid");
+  const glat = Number(fd.get("lat")), glng = Number(fd.get("lng")); const pinned = inAmd(glat, glng);
+  let slug = slugify(name); const { data: clash } = await db().from("restaurants").select("id").eq("slug", slug).maybeSingle(); if (clash) slug += "-" + Math.random().toString(36).slice(2, 5);
+  const cuisines = clean(fd.get("cuisines"), 120).split(",").map((s) => s.trim()).filter(Boolean).slice(0, 6);
+  const logo = await uploadImage(fd.get("logo"), "logos");
+  const { error } = await db().from("restaurants").insert({ owner_id: user.id, slug, name, kind: "street_vendor", tagline: clean(fd.get("tagline"), 100) || null, cuisines, area_id: area.id, address: `${landmark}, ${areaSlug}`, landmark,
+    lat: pinned ? glat : area.lat, lng: pinned ? glng : area.lng, location_updated_at: pinned ? new Date().toISOString() : null, phone, whatsapp: phone, contact_email: email || null, fssai_no: fssaiStatus === "have" ? fssai : null, fssai_status: fssaiStatus,
+    owner_name: owner || null, veg_only: fd.get("veg_only") === "on", logo_url: logo, city: geo.name, pincode: clean(fd.get("pincode"), 6).replace(/\D/g, "") || null, prep_minutes: 15 });
+  if (error) redirect("/street-vendors/join?e=save");
+  await db().from("profiles").update({ phone, full_name: owner || undefined }).eq("id", user.id);
+  await notifyAdmins({ title: "New street vendor application", body: `${name} · ${landmark} · FSSAI: ${fssaiStatus}`, href: "/admin/leads" });
+  redirect("/partner/dashboard?welcome=1");
+}
+/** Moves the vendor's live pin (called from the dashboard with the phone's GPS). Returns false if the position is outside Ahmedabad. */
+export async function updateLocation(lat: number, lng: number, landmark: string): Promise<boolean> {
+  const { r } = await requireRestaurant();
+  if (!(typeof lat === "number" && typeof lng === "number") || !inAmd(lat, lng)) return false;
+  const lm = String(landmark || "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, 120);
+  await db().from("restaurants").update({ lat, lng, landmark: lm || r.landmark || null, location_updated_at: new Date().toISOString() }).eq("id", r.id);
+  revalidatePath("/partner/dashboard"); return true;
 }

@@ -4,6 +4,9 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   experimental: { serverActions: { bodySizeLimit: "4mb" } },
   images: { remotePatterns: supabaseHost ? [{ protocol: "https", hostname: supabaseHost }] : [] },
+  async redirects() {
+    return [{ source: "/for-restaurants", destination: "/partner", permanent: false }, { source: "/ride-with-us", destination: "/drivers", permanent: false }, { source: "/vendors", destination: "/street-vendors", permanent: false }, { source: "/street-vendor", destination: "/street-vendors", permanent: false }];
+  },
   async headers() {
     return [{ source: "/(.*)", headers: [
       { key: "X-Content-Type-Options", value: "nosniff" },

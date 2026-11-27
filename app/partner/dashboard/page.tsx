@@ -2,7 +2,9 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireRestaurant } from "@/lib/session";
 import { rupees, dateFmt, dayFmt, todayIST, STATUS_LABEL } from "@/lib/format";
-import { getListing } from "@/lib/pricing";
+import { getListing, getVendorListing } from "@/lib/pricing";
+import LocationUpdate from "@/components/LocationUpdate";
+import InstallApp from "@/components/InstallApp";
 import { orderAction, toggleOpen, updateRestaurant } from "../actions";
 import NewOrderAlert from "@/components/NewOrderAlert";
 import AutoRefresh from "@/components/AutoRefresh";
@@ -12,7 +14,7 @@ export const metadata = { title: "Restaurant dashboard" };
 export const dynamic = "force-dynamic";
 const STEP: Record<string, string> = { placed: "Accept order", accepted: "Start preparing", preparing: "Mark ready" };
 export default async function Page({ searchParams }: { searchParams: Promise<{ welcome?: string; saved?: string; paid?: string }> }) {
-  const sp = await searchParams; const { r } = await requireRestaurant(); const l = await getListing();
+  const sp = await searchParams; const { r } = await requireRestaurant(); const vendor = r.kind === "street_vendor"; const l = await getListing(); const vl = await getVendorListing();
   const { data: orders } = await db().from("orders").select("*, drivers:jm_drivers(name,phone)").eq("restaurant_id", r.id).neq("status", "pending_payment").order("created_at", { ascending: false }).limit(40);
   const ids = (orders || []).map((o: any) => o.id); const { data: its } = ids.length ? await db().from("order_items").select("*").in("order_id", ids) : { data: [] };
   const active = (orders || []).filter((o: any) => !["delivered", "cancelled", "rejected"].includes(o.status)); const done = (orders || []).filter((o: any) => ["delivered", "cancelled", "rejected"].includes(o.status));
@@ -25,14 +27,15 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ w
     {["placed", "accepted", "preparing", "ready", "picked_up"].includes(o.status) && <form action={orderAction} className="mt-3 flex flex-wrap gap-2"><input type="hidden" name="id" value={o.id} />
       {STEP[o.status] && <button name="act" value="next" className="btn btn-green !py-2 text-sm">{STEP[o.status]}</button>}{o.status === "ready" && <button name="act" value="pickup" className="btn btn-dark !py-2 text-sm">{o.drivers ? "Handed to rider" : "Handed to rider (own delivery)"}</button>}{o.status === "picked_up" && <button name="act" value="delivered" className="btn btn-dark !py-2 text-sm">Mark delivered</button>}{o.status === "placed" && <button name="act" value="reject" className="btn btn-line !py-2 text-sm">Decline</button>}</form>}</li>);
   return (<div className="wrap max-w-3xl py-8"><AutoRefresh every={60000} />
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="kicker">Restaurant dashboard</p><h1 className="text-3xl md:text-4xl">{r.name}</h1></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="kicker">{vendor ? "Street vendor dashboard" : "Restaurant dashboard"}</p><h1 className="text-3xl md:text-4xl">{r.name}</h1></div>
       {r.status === "approved" && <form action={toggleOpen}><button className={`btn ${r.is_open ? "btn-green" : "btn-line"}`}>{r.is_open ? "● Open: tap to close" : "○ Closed: tap to open"}</button></form>}</div>
     {sp.welcome && <p className="mt-4 rounded-xl bg-leaf-soft p-3 font-semibold text-leaf">Application received. We will verify your FSSAI details and approve you shortly. You will get an alert.</p>}{sp.saved && <p className="mt-4 rounded-xl bg-leaf-soft p-3 font-semibold text-leaf">Saved.</p>}{sp.paid && <p className="mt-4 rounded-xl bg-leaf-soft p-3 font-semibold text-leaf">Payment received. Your listing will update in a moment.</p>}
     {r.status === "pending" && <div className="card mt-6 p-5"><h2 className="text-2xl">Awaiting approval</h2><p className="mt-1 text-muted">We are checking your details. Meanwhile you can <Link href="/partner/menu" className="font-bold text-chilli">build your menu</Link>.</p></div>}
     {(r.status === "rejected" || r.status === "suspended") && <div className="card mt-6 p-5"><h2 className="text-2xl capitalize">{r.status}</h2><p className="mt-1 text-muted">{r.admin_note || "Please contact Jamva support."}</p></div>}
-    {r.status === "approved" && <div className="card mt-6 grid gap-4 p-5 md:grid-cols-2"><div><p className="kicker">Listing</p><p className="mt-1 font-bold">{r.listing_paid_until && r.listing_paid_until >= t ? `Paid until ${dayFmt(r.listing_paid_until)}` : trialDays > 0 ? `Free trial: ${trialDays} day${trialDays > 1 ? "s" : ""} left` : "Expired: you are hidden from customers"}</p><p className="text-sm text-muted">Yearly fee {rupees(l.yearly_fee * 100)} + {l.gst_percent}% GST. Zero commission.</p></div><div className="flex items-center md:justify-end"><ListingPay label={`Pay yearly listing ${rupees(Math.round(l.yearly_fee * 100 * (1 + l.gst_percent / 100)))}`} /></div></div>}
-    {r.status === "approved" && !listed && <p className="mt-3 rounded-xl bg-soft p-3 text-sm font-semibold text-chilli">Your listing has expired, so customers cannot see you. Pay the yearly fee to go live again.</p>}
-    <div className="mt-6 flex flex-wrap items-center gap-3"><PushButton label="Turn on order alerts on this phone" /><NewOrderAlert initial={waiting} /></div>
+    {r.status === "approved" && <div className="card mt-6 grid gap-4 p-5 md:grid-cols-2"><div><p className="kicker">Listing</p><p className="mt-1 font-bold">{r.listing_paid_until && r.listing_paid_until >= t ? `Paid until ${dayFmt(r.listing_paid_until)}` : trialDays > 0 ? `Free trial: ${trialDays} day${trialDays > 1 ? "s" : ""} left` : "Expired: you are hidden from customers"}</p><p className="text-sm text-muted">{vendor ? `₹${vl.monthly_fee} a month or ₹${vl.yearly_fee} a year + ${vl.gst_percent}% GST. Zero commission.` : `Yearly fee ${rupees(l.yearly_fee * 100)} + ${l.gst_percent}% GST. Zero commission.`}</p></div><div className="flex flex-wrap items-center gap-2 md:justify-end">{vendor ? <><ListingPay plan="monthly" label={`Pay monthly ${rupees(Math.round(vl.monthly_fee * 100 * (1 + vl.gst_percent / 100)))}`} /><ListingPay plan="yearly" label={`Pay yearly ${rupees(Math.round(vl.yearly_fee * 100 * (1 + vl.gst_percent / 100)))}`} /></> : <ListingPay label={`Pay yearly listing ${rupees(Math.round(l.yearly_fee * 100 * (1 + l.gst_percent / 100)))}`} />}</div></div>}
+    {r.status === "approved" && !listed && <p className="mt-3 rounded-xl bg-soft p-3 text-sm font-semibold text-chilli">Your listing has expired, so customers cannot see you. Pay the listing fee to go live again.</p>}
+    {vendor && r.status === "approved" && <><p className="mt-4 rounded-xl bg-soft p-3 text-sm font-semibold">Customers see your cart on the live map only while you are <b>Open</b>. Switch to Closed when you leave.</p><LocationUpdate landmark={r.landmark} /></>}
+    <div className="mt-6 flex flex-wrap items-center gap-3"><InstallApp label="Install Jamva Partner App" className="btn btn-line !py-2 text-sm" /><PushButton label="Turn on order alerts on this phone" /><NewOrderAlert initial={waiting} /></div>
     <h2 className="mt-8 text-2xl">Live orders {waiting > 0 && <span className="chip ml-2 bg-chilli text-white">{waiting} new</span>}</h2>
     {active.length ? <ul className="mt-3 space-y-3">{active.map((o: any) => <Card key={o.id} o={o} />)}</ul> : <p className="mt-3 text-muted">{r.is_open ? "No live orders right now. You will hear a sound when one arrives." : "Tap Open to start receiving orders."}</p>}
     <div className="mt-8 flex flex-wrap gap-3"><Link href="/partner/menu" className="btn btn-dark">Manage menu</Link></div>

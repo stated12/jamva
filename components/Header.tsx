@@ -6,7 +6,7 @@ import { getProfile } from "@/lib/session";
 import { logout } from "@/app/actions";
 export default async function Header() {
   const p = await getProfile();
-  const nav = [["/restaurants", "Restaurants"], ["/partner", "For restaurants"], ["/drivers", "Ride with us"], ["/about", "About"]] as const;
+  const nav = [["/restaurants", "Restaurants"], ["/street-vendors", "Street Vendors"], ["/drivers", "Ride with us"], ["/partner", "For restaurants"], ["/about", "About"]] as const;
   return (<header className="sticky top-0 z-40 border-b border-line bg-cream/90 backdrop-blur">
     <div className="wrap flex h-16 items-center gap-4"><Link href="/" aria-label="Jamva home"><Logo /></Link>
       <nav className="ml-6 hidden items-center gap-6 text-sm font-bold md:flex">{nav.map(([h, l]) => <Link key={h} href={h} className="hover:text-kesar-dark">{l}</Link>)}</nav>

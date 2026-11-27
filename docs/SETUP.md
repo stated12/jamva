@@ -41,3 +41,10 @@ Order alerts for restaurants and customers go to every channel you configure: in
 3. Flow: restaurant accepts, online riders are alerted, a rider taps Take it (atomic, one rider only), picks up when the kitchen marks Ready, delivers. Cash-on-delivery is confirmed by the rider at delivery.
 4. Rider pay = share of the delivery fee before GST (Admin > Fees & settings > Rider pay). Record weekly payouts and cash handed in under Admin > Riders. Admin can also assign or unassign a rider on any order (Admin > Orders).
 5. The restaurant and admin "Handed to rider / Delivered" buttons still work as a fallback.
+
+## Street vendors, cities and the three apps (run `supabase/04_cities_vendors.sql` after 03)
+- Customer app: `/`. Partner app (restaurants and street vendors): install from `/partner` or `/street-vendors` (manifest `partner.webmanifest`, opens the dashboard). Rider app: install from `/drivers` (manifest `rider.webmanifest`). iPhone users get Add to Home Screen steps.
+- Everyone joins from `/join` (restaurant, street vendor, rider). A searchable city box decides the flow: Ahmedabad (Live) gets full onboarding; any other city gets the short waitlist form and a thank-you message. Leads store city and PIN.
+- Admin > Cities switches a city between Live and Waitlist only. Admin > Registrations filters by role, city, status, FSSAI; Approve/Reject, Call, WhatsApp, notes, CSV export. Admin > Fees & settings holds vendor monthly/yearly price and trial days.
+- Street vendors appear to customers only while Open. They update their GPS pin and landmark from the dashboard. The map uses OpenStreetMap (no key).
+- Area list: the app fills the Ahmedabad areas and cities itself if the tables are empty.

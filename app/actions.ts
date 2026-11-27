@@ -5,6 +5,7 @@ import { authClient } from "@/lib/supabase-server";
 import { allow } from "@/lib/ratelimit";
 import { clean, isPhone, normPhone } from "@/lib/format";
 import { notifyAdmins } from "@/lib/notify";
+import { resolveCity } from "@/lib/data";
 const safeNext = (n: string) => (n.startsWith("/") && !n.startsWith("//") ? n : "/account");
 export async function login(fd: FormData) {
   const next = safeNext(clean(fd.get("next"), 200) || "/account");
@@ -32,7 +33,7 @@ export async function register(fd: FormData) {
 export async function logout() { await (await authClient()).auth.signOut(); redirect("/"); }
 export async function joinWaitlist(fd: FormData) {
   if (!(await allow("waitlist", 8, 3600))) redirect("/?w=rate#waitlist");
-  const phone = normPhone(clean(fd.get("phone"), 20)), email = clean(fd.get("email"), 120), kind = ["customer", "restaurant", "driver"].includes(String(fd.get("kind"))) ? String(fd.get("kind")) : "customer";
+  const phone = normPhone(clean(fd.get("phone"), 20)), email = clean(fd.get("email"), 120), kind = ["customer", "restaurant", "vendor", "driver"].includes(String(fd.get("kind"))) ? String(fd.get("kind")) : "customer";
   if (!isPhone(phone) && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) redirect("/?w=bad#waitlist");
   await db().from("waitlist").insert({ name: clean(fd.get("name"), 80) || null, phone: isPhone(phone) ? phone : null, email: email || null, area_slug: clean(fd.get("area"), 40) || null, kind });
   if (kind !== "customer") await notifyAdmins({ title: `New ${kind} interest`, body: clean(fd.get("name"), 80) || phone || email, href: "/admin" });
@@ -44,4 +45,17 @@ export async function sendContact(fd: FormData) {
   await db().from("contact_messages").insert({ name: clean(fd.get("name"), 80), email: clean(fd.get("email"), 120), phone: clean(fd.get("phone"), 20), message });
   await notifyAdmins({ title: "New contact message", body: message.slice(0, 120), href: "/admin" });
   redirect("/contact?ok=1");
+}
+/** Lead from a city where Jamva is not live (or a quick interest form). Stored in the waitlist with city and PIN so demand per city can be ranked. */
+export async function saveLead(fd: FormData) {
+  if (!(await allow("lead", 8, 3600))) redirect("/join?e=rate");
+  const role = ["restaurant", "vendor", "driver"].includes(String(fd.get("role"))) ? String(fd.get("role")) : "restaurant";
+  const name = clean(fd.get("name"), 80), phone = normPhone(clean(fd.get("phone"), 20)), geo = await resolveCity(clean(fd.get("city"), 60));
+  const back = role === "driver" ? "/driver/register" : role === "vendor" ? "/street-vendors/join" : "/partner/register";
+  if (name.length < 2 || !isPhone(phone)) redirect(`${back}?city=${encodeURIComponent(geo.name)}&e=lead`);
+  const pin = clean(fd.get("pincode"), 6).replace(/\D/g, "");
+  const details = { business: clean(fd.get("business"), 80), category: clean(fd.get("category"), 40), cuisine: clean(fd.get("cuisine"), 120), fssai_status: clean(fd.get("fssai_status"), 10), vehicle: clean(fd.get("vehicle"), 40), licence_status: clean(fd.get("licence_status"), 10), shift: clean(fd.get("shift"), 30) };
+  await db().from("waitlist").insert({ name, phone, kind: role, city: geo.name, pincode: pin || null, area_slug: clean(fd.get("area"), 60) || null, details, status: "new" });
+  await notifyAdmins({ title: `New ${role} lead: ${geo.name}`, body: `${name} · ${phone}`, href: "/admin/leads" });
+  redirect(`/joined?city=${encodeURIComponent(geo.name)}&role=${role}&live=${geo.live ? 1 : 0}`);
 }

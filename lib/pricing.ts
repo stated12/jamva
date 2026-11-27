@@ -7,6 +7,8 @@ const DEF_LISTING: Listing = { yearly_fee: 6000, gst_percent: 18, trial_days: 90
 export async function setting<T>(key: string, def: T): Promise<T> {
   try { const { data } = await db().from("settings").select("value").eq("key", key).maybeSingle(); return data?.value ? { ...def, ...data.value } : def; } catch { return def; }
 }
+export type VendorListing = { monthly_fee: number; yearly_fee: number; gst_percent: number; trial_days: number };
+export const getVendorListing = () => setting<VendorListing>("vendor_listing", { monthly_fee: 199, yearly_fee: 1499, gst_percent: 18, trial_days: 90 });
 export const getFees = () => setting<Fees>("fees", DEF_FEES);
 export const getListing = () => setting<Listing>("listing", DEF_LISTING);
 /** Straight-line distance x1.3 as a road estimate. Delivery fee tiers come from settings; null = out of range. */

@@ -9,13 +9,16 @@ import { notify, notifyAdmins } from "@/lib/notify";
 import { getDriverCfg, requireDriver, announceToDrivers } from "@/lib/drivers";
 import { setOrderStatus } from "@/lib/orders";
 import { createAccount } from "../actions";
+import { resolveCity } from "@/lib/data";
 
 export async function registerDriver(fd: FormData) {
   if (!(await allow("driver-register", 6, 3600))) redirect("/driver/register?e=rate");
   let user = await currentUser();
   const email = clean(fd.get("email"), 120).toLowerCase(), password = String(fd.get("password") || ""), name = clean(fd.get("name"), 80), phone = normPhone(clean(fd.get("phone"), 20));
   const vehicle = clean(fd.get("vehicle"), 30) || "Two-wheeler", vehicleNo = clean(fd.get("vehicle_no"), 20).toUpperCase(), licence = clean(fd.get("licence_no"), 30).toUpperCase(), areaSlug = clean(fd.get("area"), 40), upi = clean(fd.get("upi_id"), 60);
-  if (name.length < 2 || !isPhone(phone) || vehicleNo.length < 4 || licence.length < 8 || !areaSlug) redirect("/driver/register?e=invalid");
+  const geo = await resolveCity(clean(fd.get("city"), 60)); if (!geo.live) redirect("/driver/register?city=" + encodeURIComponent(geo.name));
+  const licStatus = clean(fd.get("licence_status"), 10) === "learner" ? "learner" : "yes", shift = clean(fd.get("shift"), 30) || "Full-Time";
+  if (name.length < 2 || !isPhone(phone) || vehicleNo.length < 4 || (licStatus === "yes" && licence.length < 8) || !areaSlug) redirect("/driver/register?e=invalid");
   if (!user) {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || password.length < 8) redirect("/driver/register?e=invalid");
     const err = await createAccount(email, password, name, phone); if (err) redirect("/driver/register?e=" + err);
@@ -26,7 +29,7 @@ export async function registerDriver(fd: FormData) {
   const { data: existing } = await db().from("drivers").select("id").eq("user_id", user.id).maybeSingle();
   if (existing) redirect("/driver");
   const { data: area } = await db().from("areas").select("id").eq("slug", areaSlug).maybeSingle(); if (!area) redirect("/driver/register?e=invalid");
-  const { error } = await db().from("drivers").insert({ user_id: user.id, name, phone, vehicle, vehicle_no: vehicleNo, licence_no: licence, area_id: area.id, upi_id: upi || null });
+  const { error } = await db().from("drivers").insert({ user_id: user.id, name, phone, vehicle, vehicle_no: vehicleNo, licence_no: licence || null, licence_status: licStatus, shift, city: geo.name, pincode: clean(fd.get("pincode"), 6).replace(/\D/g, "") || null, area_id: area.id, upi_id: upi || null });
   if (error) redirect("/driver/register?e=save");
   await db().from("profiles").update({ phone, full_name: name }).eq("id", user.id);
   await notifyAdmins({ title: "New rider application", body: `${name} (${areaSlug})`, href: "/admin/drivers" });

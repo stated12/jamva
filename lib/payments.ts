@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { createRzpOrder, fetchRzpPayment } from "./razorpay";
 import { markOrderPaid } from "./orders";
-import { getListing } from "./pricing";
+import { getListing, getVendorListing } from "./pricing";
 import { notify, notifyAdmins } from "./notify";
 import { razorpayConfigured } from "./env";
 import { todayIST } from "./format";
@@ -13,11 +13,13 @@ export async function createOrderPayment(order: any, userId: string) {
   await db().from("orders").update({ razorpay_order_id: rz.id }).eq("id", order.id);
   return { ok: true as const, razorpayOrderId: rz.id, amountPaise: order.total_paise, keyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID };
 }
-export async function createListingPayment(restaurant: any, userId: string) {
+export async function createListingPayment(restaurant: any, userId: string, planIn?: string) {
   if (!razorpayConfigured()) return { ok: false as const, error: "unavailable" };
-  const l = await getListing(); const base = Math.round(l.yearly_fee * 100), gst = Math.round((base * l.gst_percent) / 100), total = base + gst;
+  const vendor = restaurant.kind === "street_vendor"; const plan = vendor && planIn === "monthly" ? "monthly" : "yearly";
+  const l: { yearly_fee: number; monthly_fee?: number; gst_percent: number } = vendor ? await getVendorListing() : await getListing();
+  const fee = plan === "monthly" ? (l.monthly_fee || 0) : l.yearly_fee; const base = Math.round(fee * 100), gst = Math.round((base * l.gst_percent) / 100), total = base + gst;
   const rz = await createRzpOrder(paise2r(total), "LST-" + restaurant.slug, { purpose: "listing", restaurant: restaurant.slug });
-  await db().from("payments").insert({ purpose: "listing", restaurant_id: restaurant.id, user_id: userId, amount_paise: total, gst_paise: gst, razorpay_order_id: rz.id });
+  await db().from("payments").insert({ purpose: "listing", restaurant_id: restaurant.id, user_id: userId, amount_paise: total, gst_paise: gst, plan, razorpay_order_id: rz.id });
   return { ok: true as const, razorpayOrderId: rz.id, amountPaise: total, keyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID };
 }
 /** Idempotent settlement for both orders and yearly listings. Called by the checkout callback and by the webhook. */
@@ -30,10 +32,10 @@ export async function settlePayment(razorpayOrderId: string, paymentId: string, 
   if (p.purpose === "listing" && p.restaurant_id) {
     const { data: r } = await db().from("restaurants").select("name,owner_id,listing_paid_until,trial_until").eq("id", p.restaurant_id).maybeSingle();
     const t = todayIST(); const from = [r?.listing_paid_until, r?.trial_until, t].filter(Boolean).sort().pop() as string;
-    const d = new Date(from + "T00:00:00Z"); d.setUTCFullYear(d.getUTCFullYear() + 1); d.setUTCDate(d.getUTCDate() - 0);
+    const d = new Date(from + "T00:00:00Z"); if (p.plan === "monthly") d.setUTCMonth(d.getUTCMonth() + 1); else d.setUTCFullYear(d.getUTCFullYear() + 1);
     await db().from("restaurants").update({ listing_paid_until: d.toISOString().slice(0, 10) }).eq("id", p.restaurant_id);
-    await notify(r?.owner_id, { title: "Yearly listing activated", body: `Thank you. ${r?.name} is listed until ${d.toISOString().slice(0, 10)}.`, href: "/partner/dashboard" });
-    await notifyAdmins({ title: "Listing fee received", body: `${r?.name} paid the yearly listing fee.`, href: "/admin/restaurants" });
+    await notify(r?.owner_id, { title: p.plan === "monthly" ? "Monthly listing activated" : "Yearly listing activated", body: `Thank you. ${r?.name} is listed until ${d.toISOString().slice(0, 10)}.`, href: "/partner/dashboard" });
+    await notifyAdmins({ title: "Listing fee received", body: `${r?.name} paid the listing fee (${p.plan || "yearly"}).`, href: "/admin/restaurants" });
   }
 }
 /** Used if a customer returns before the webhook: ask Razorpay directly. */

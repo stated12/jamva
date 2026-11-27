@@ -1,0 +1,35 @@
+import Link from "next/link";
+import { loadLeads } from "@/lib/leads";
+import { listCities } from "@/lib/data";
+import { dayFmt } from "@/lib/format";
+import { restaurantDecision, driverDecision, leadUpdate } from "../actions";
+export const dynamic = "force-dynamic";
+type SP = { role?: string; city?: string; status?: string; fssai?: string; q?: string };
+const ROLES: [string, string][] = [["", "All roles"], ["restaurant", "Restaurants"], ["vendor", "Street vendors"], ["driver", "Delivery partners"]];
+const STATUSES = ["Pending", "Approved", "Live", "Waitlisted", "Rejected"];
+export default async function Page({ searchParams }: { searchParams: Promise<SP> }) {
+  const sp = await searchParams; const [all, rows, cities] = await Promise.all([loadLeads(), loadLeads(sp), listCities()]);
+  const liveCities = new Set(cities.filter((c) => c.status === "live").map((c) => c.name.toLowerCase()));
+  const by = (role: string, pred: (c: string) => boolean) => all.filter((l) => l.role === role && pred(l.city.toLowerCase())).length;
+  const cityNames = Array.from(new Set(all.map((l) => l.city).filter(Boolean)));
+  const demand = cityNames.map((c) => ({ c, live: liveCities.has(c.toLowerCase()), r: all.filter((l) => l.city === c && l.role === "restaurant").length, v: all.filter((l) => l.city === c && l.role === "vendor").length, d: all.filter((l) => l.city === c && l.role === "driver").length })).sort((a, b) => b.r + b.v + b.d - (a.r + a.v + a.d));
+  const qs = new URLSearchParams(Object.entries(sp).filter(([, v]) => v) as [string, string][]).toString();
+  const tiles: [string, number][] = [["Restaurants (Ahmedabad)", by("restaurant", (c) => liveCities.has(c))], ["Street vendors (Ahmedabad)", by("vendor", (c) => liveCities.has(c))], ["Delivery partners (Ahmedabad)", by("driver", (c) => liveCities.has(c))], ["Waitlist: other cities", all.filter((l) => l.status === "Waitlisted").length]];
+  return (<div><h1 className="text-3xl">Registrations and leads</h1>
+    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">{tiles.map(([l, v]) => <div key={l} className="card p-4"><p className="text-xs font-bold text-muted">{l}</p><p className="font-display text-3xl">{v}</p></div>)}</div>
+    <details className="card mt-4 p-4"><summary className="cursor-pointer font-extrabold">Demand by city</summary><table className="mt-3 w-full text-left text-sm"><thead><tr className="text-muted"><th className="py-1">City</th><th>Restaurants</th><th>Vendors</th><th>Riders</th><th>Status</th></tr></thead><tbody>{demand.map((d) => <tr key={d.c} className="border-t border-line"><td className="py-1 font-bold">{d.c}</td><td>{d.r}</td><td>{d.v}</td><td>{d.d}</td><td>{d.live ? "Live" : "Waitlist"}</td></tr>)}{!demand.length && <tr><td className="py-2 text-muted" colSpan={5}>No data yet.</td></tr>}</tbody></table></details>
+    <form className="mt-4 grid gap-2 md:grid-cols-6"><input name="q" defaultValue={sp.q} placeholder="Search name, phone, area, PIN" className="input md:col-span-2" />
+      <select name="role" defaultValue={sp.role || ""} className="input">{ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+      <select name="city" defaultValue={sp.city || ""} className="input"><option value="">All cities</option>{cityNames.map((c) => <option key={c}>{c}</option>)}</select>
+      <select name="status" defaultValue={sp.status || ""} className="input"><option value="">All statuses</option>{STATUSES.map((s) => <option key={s}>{s}</option>)}</select>
+      <select name="fssai" defaultValue={sp.fssai || ""} className="input"><option value="">Any FSSAI</option><option value="have">Have FSSAI</option><option value="applied">Applied</option><option value="help">Needs help</option></select>
+      <button className="btn btn-dark !py-2">Filter</button><a href={`/admin/leads/export${qs ? "?" + qs : ""}`} className="btn btn-line !py-2 text-center">Export CSV</a><Link href="/admin/leads" className="btn btn-line !py-2 text-center">Reset</Link></form>
+    <p className="mt-3 text-sm text-muted">{rows.length} shown</p>
+    <ul className="mt-2 space-y-3">{rows.slice(0, 200).map((l) => { const wa = "https://wa.me/91" + l.phone.replace(/\D/g, "").slice(-10); return (<li key={l.src + l.id} className="card p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div>
+      <p className="font-extrabold">{l.name || l.owner} <span className="chip ml-1">{l.role}</span> <span className={`chip ml-1 ${l.status === "Pending" ? "bg-kesar text-white" : l.status === "Live" || l.status === "Approved" ? "bg-leaf-soft text-leaf" : ""}`}>{l.status}</span></p>
+      <p className="text-sm text-muted">{l.owner && l.owner !== l.name ? l.owner + " · " : ""}{l.city}{l.area ? " · " + l.area : ""}{l.pin ? " · " + l.pin : ""} · {dayFmt(l.created)}{l.fssai ? " · " + l.fssai : ""}</p>
+      <p className="text-sm"><a className="font-bold underline" href={`tel:${l.phone}`}>Call {l.phone}</a> · <a className="font-bold underline" href={wa} target="_blank" rel="noopener noreferrer">WhatsApp</a>{l.lat && l.lng && l.role === "vendor" ? <> · <a className="underline" href={`https://www.openstreetmap.org/?mlat=${l.lat}&mlon=${l.lng}#map=17/${l.lat}/${l.lng}`} target="_blank" rel="noopener noreferrer">Check GPS pin</a></> : null}</p></div>
+      {l.src === "r" && <form action={restaurantDecision} className="flex flex-wrap items-center gap-2"><input type="hidden" name="id" value={l.id} /><input name="note" defaultValue={l.note} placeholder="Internal note / note to owner" className="input !w-48 !py-2 text-sm" />{l.status === "Pending" || l.status === "Rejected" ? <button name="act" value="approve" className="btn btn-green !py-2 text-sm">Approve</button> : null}{l.status === "Pending" && <button name="act" value="reject" className="btn btn-line !py-2 text-sm">Reject</button>}</form>}
+      {l.src === "d" && <form action={driverDecision} className="flex flex-wrap items-center gap-2"><input type="hidden" name="id" value={l.id} /><input name="note" defaultValue={l.note} placeholder="Internal note / note to rider" className="input !w-48 !py-2 text-sm" />{l.status === "Pending" || l.status === "Rejected" ? <button name="act" value="approve" className="btn btn-green !py-2 text-sm">Approve</button> : null}{l.status === "Pending" && <button name="act" value="block" className="btn btn-line !py-2 text-sm">Reject</button>}</form>}
+      {l.src === "w" && <form action={leadUpdate} className="flex flex-wrap items-center gap-2"><input type="hidden" name="id" value={l.id} /><input name="note" defaultValue={l.note} placeholder="Internal note" className="input !w-48 !py-2 text-sm" /><select name="status" defaultValue={l.raw || "new"} className="input !w-32 !py-2 text-sm"><option value="new">New</option><option value="contacted">Contacted</option><option value="closed">Closed</option></select><button className="btn btn-dark !py-2 text-sm">Save</button></form>}</div></li>); })}{!rows.length && <li className="text-muted">Nothing matches these filters.</li>}</ul></div>);
+}

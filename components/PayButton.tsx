@@ -9,12 +9,12 @@ export async function openRzp(r: any, desc: string, doneUrl: string, prefill: { 
   rz.on("payment.failed", onFail); rz.open();
 }
 /** Yearly listing fee for restaurants. */
-export default function ListingPay({ label, doneUrl = "/partner/dashboard?paid=1" }: { label: string; doneUrl?: string }) {
+export default function ListingPay({ label, plan, doneUrl = "/partner/dashboard?paid=1" }: { label: string; plan?: "monthly" | "yearly"; doneUrl?: string }) {
   const [busy, setBusy] = useState(false); const [msg, setMsg] = useState("");
   async function go() {
     setBusy(true); setMsg("");
-    try { const r = await (await fetch("/api/pay/listing", { method: "POST" })).json(); if (!r.ok) { setMsg(r.error === "unavailable" ? "Online payment is not open yet. We will contact you." : r.error === "not_approved" ? "Available once your restaurant is approved." : "Could not start payment."); return setBusy(false); }
-      await openRzp(r, "Jamva yearly listing", doneUrl, {}, () => setBusy(false), () => { setBusy(false); setMsg("Payment failed. You can try again."); }); } catch { setMsg("Something went wrong."); setBusy(false); }
+    try { const r = await (await fetch("/api/pay/listing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plan }) })).json(); if (!r.ok) { setMsg(r.error === "unavailable" ? "Online payment is not open yet. We will contact you." : r.error === "not_approved" ? "Available once your restaurant is approved." : "Could not start payment."); return setBusy(false); }
+      await openRzp(r, plan === "monthly" ? "Jamva monthly listing" : "Jamva listing", doneUrl, {}, () => setBusy(false), () => { setBusy(false); setMsg("Payment failed. You can try again."); }); } catch { setMsg("Something went wrong."); setBusy(false); }
   }
   return (<div><button onClick={go} disabled={busy} className="btn btn-primary">{busy ? "Please wait…" : label}</button>{msg && <p className="mt-2 text-sm text-chilli">{msg}</p>}</div>);
 }

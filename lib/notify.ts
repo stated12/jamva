@@ -20,7 +20,7 @@ async function email(to: string, n: N) {
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
 async function push(userId: string, n: N) {
   const pub = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY, priv = process.env.VAPID_PRIVATE_KEY; if (!pub || !priv) return;
-  webpush.setVapidDetails(process.env.VAPID_SUBJECT || "mailto:hello@jamva.in", pub, priv);
+  webpush.setVapidDetails(process.env.VAPID_SUBJECT || "mailto:support@jamva.in", pub, priv);
   const { data } = await db().from("push_subscriptions").select("*").eq("user_id", userId);
   await Promise.all((data || []).map(async (s: any) => {
     try { await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify({ title: n.title, body: n.body || "", href: n.href || "/" })); }
