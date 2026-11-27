@@ -1,0 +1,1 @@
+export default function Offline() { return (<div className="wrap py-24 text-center"><h1 className="text-4xl">You are offline</h1><p className="mt-3 text-muted">Check your connection and try again. Your cart is saved on this phone.</p></div>); }
