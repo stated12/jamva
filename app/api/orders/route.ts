@@ -37,15 +37,29 @@ export async function POST(req: Request) {
   if (method === "cod" && !fees.cod_enabled) return NextResponse.json({ ok: false, error: "cod_off" }, { status: 409 });
   if (method === "online" && !fees.online_enabled) return NextResponse.json({ ok: false, error: "online_off" }, { status: 409 });
   const address = { line1, landmark: clean(a.landmark, 120), area: area?.name || "", areaSlug: area?.slug || "", pincode: clean(a.pincode, 8), lat, lng };
-  const { data: o, error } = await db().from("orders").insert({ customer_id: u.id, restaurant_id: r.id, status: method === "cod" ? "placed" : "pending_payment", payment_method: method, payment_status: method === "cod" ? "cod_due" : "pending",
-    subtotal_paise: subtotal, delivery_fee_paise: q.deliveryPaise, delivery_gst_paise: q.gstPaise, total_paise: q.totalPaise, distance_km: q.distance, eta_minutes: (r.prep_minutes || 25) + q.eta - 20,
-    address, customer_name: clean(b.name, 80), customer_phone: phone, notes: clean(b.notes, 300) || null, placed_at: method === "cod" ? new Date().toISOString() : null }).select("*").single();
-  if (error || !o) return NextResponse.json({ ok: false, error: "save" }, { status: 500 });
-  await db().from("order_items").insert(want.map((w) => { const i = byId.get(w.id); return { order_id: o.id, item_id: i.id, name: i.name, price_paise: i.price_paise, qty: w.qty, is_veg: i.is_veg }; }));
-  await db().from("order_events").insert({ order_id: o.id, status: o.status, note: method === "cod" ? "Cash on delivery" : "Waiting for payment" });
-  await db().from("profiles").update({ phone, full_name: clean(b.name, 80) || undefined }).eq("id", u.id);
-  if (method === "cod") { await announceNewOrder({ ...o, restaurants: r }); return NextResponse.json({ ok: true, code: o.code }); }
-  const pay = await createOrderPayment(o, u.id);
-  if (!pay.ok) { await db().from("orders").update({ status: "cancelled", cancel_reason: "Payment unavailable" }).eq("id", o.id); return NextResponse.json({ ok: false, error: "unavailable" }, { status: 503 }); }
-  return NextResponse.json({ ...pay, code: o.code, name: clean(b.name, 80), phone });
+  // One database transaction: order, items, first event and profile update succeed or fail together. The order code is allocated collision-free inside it.
+  const { data: o, error } = await db().rpc("place_order", {
+    p_order: { customer_id: u.id, restaurant_id: r.id, status: method === "cod" ? "placed" : "pending_payment", payment_method: method, payment_status: method === "cod" ? "cod_due" : "pending",
+      subtotal_paise: subtotal, delivery_fee_paise: q.deliveryPaise, delivery_gst_paise: q.gstPaise, total_paise: q.totalPaise, distance_km: q.distance, eta_minutes: (r.prep_minutes || 25) + q.eta - 20,
+      address, customer_name: clean(b.name, 80), customer_phone: phone, notes: clean(b.notes, 300) || null, placed_at: method === "cod" ? new Date().toISOString() : null },
+    p_items: want.map((w) => { const i = byId.get(w.id); return { item_id: i.id, name: i.name, price_paise: i.price_paise, qty: w.qty, is_veg: i.is_veg }; }),
+  });
+  let order = o;
+  if (error && /could not find the function|PGRST202|place_order/i.test(`${error.code} ${error.message}`)) {
+    // 05_hardening.sql not applied yet: use the previous (non-transactional) path so ordering keeps working. Run 05_hardening.sql to switch to the safe path.
+    const ins = await db().from("orders").insert({ customer_id: u.id, restaurant_id: r.id, status: method === "cod" ? "placed" : "pending_payment", payment_method: method, payment_status: method === "cod" ? "cod_due" : "pending",
+      subtotal_paise: subtotal, delivery_fee_paise: q.deliveryPaise, delivery_gst_paise: q.gstPaise, total_paise: q.totalPaise, distance_km: q.distance, eta_minutes: (r.prep_minutes || 25) + q.eta - 20,
+      address, customer_name: clean(b.name, 80), customer_phone: phone, notes: clean(b.notes, 300) || null, placed_at: method === "cod" ? new Date().toISOString() : null }).select("*").single();
+    order = ins.data;
+    if (order) {
+      const it = await db().from("order_items").insert(want.map((w) => { const i = byId.get(w.id); return { order_id: order.id, item_id: i.id, name: i.name, price_paise: i.price_paise, qty: w.qty, is_veg: i.is_veg }; }));
+      if (it.error) { await db().from("orders").delete().eq("id", order.id); order = null; }
+      else { await db().from("order_events").insert({ order_id: order.id, status: order.status, note: method === "cod" ? "Cash on delivery" : "Waiting for payment" }); await db().from("profiles").update({ phone, full_name: clean(b.name, 80) || undefined }).eq("id", u.id); }
+    }
+  } else if (error) console.error("[order] place_order failed:", error.message);
+  if (!order) return NextResponse.json({ ok: false, error: "save" }, { status: 500 });
+  if (method === "cod") { await announceNewOrder({ ...order, restaurants: r }); return NextResponse.json({ ok: true, code: order.code }); }
+  const pay = await createOrderPayment(order, u.id);
+  if (!pay.ok) { await db().from("orders").update({ status: "cancelled", cancel_reason: "Payment unavailable" }).eq("id", order.id); return NextResponse.json({ ok: false, error: "unavailable" }, { status: 503 }); }
+  return NextResponse.json({ ...pay, code: order.code, name: clean(b.name, 80), phone });
 }

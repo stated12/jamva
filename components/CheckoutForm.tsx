@@ -6,7 +6,7 @@ import { rupees } from "@/lib/format";
 import { openRzp } from "./PayButton";
 type Q = { ok: boolean; far?: boolean; deliveryPaise?: number; gstPaise?: number; totalPaise?: number; eta?: number; distance?: number; max?: number };
 const ERR: Record<string, string> = { closed: "This restaurant has just closed.", unavailable: "An item is no longer available. Please review your cart.", min: "Your order is below the restaurant's minimum.", phone: "Please enter a valid 10-digit mobile number.", address: "Please enter your full address.", area: "Please choose your area.", far: "This address is outside the delivery range.", rate: "Too many attempts. Please wait a few minutes.", online_off: "Online payment is not available right now.", cod_off: "Cash on delivery is not available.", empty: "Your cart is empty.", restaurant: "This restaurant is not available." };
-export default function CheckoutForm({ areas, defaults, cod, online, email }: { areas: { slug: string; name: string }[]; defaults: { name: string; phone: string; line1: string; landmark: string; area: string }; cod: boolean; online: boolean; email: string }) {
+export default function CheckoutForm({ areas, defaults, cod, online, email }: { areas: { slug: string; name: string; pincode?: string }[]; defaults: { name: string; phone: string; line1: string; landmark: string; area: string }; cod: boolean; online: boolean; email: string }) {
   const { lines, subtotal, slug, name, clear } = useCart();
   const [f, setF] = useState({ ...defaults, notes: "" }); const [pos, setPos] = useState<{ lat: number; lng: number } | null>(null);
   const [method, setMethod] = useState<"online" | "cod">(online ? "online" : "cod"); const [q, setQ] = useState<Q | null>(null); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
@@ -21,7 +21,7 @@ export default function CheckoutForm({ areas, defaults, cod, online, email }: { 
   async function place() {
     setErr(""); setBusy(true);
     try {
-      const res = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ restaurant: slug, items: lines.map((l) => ({ id: l.id, qty: l.qty })), address: { line1: f.line1, landmark: f.landmark, areaSlug: f.area, lat: pos?.lat, lng: pos?.lng }, name: f.name, phone: f.phone, notes: f.notes, method }) });
+      const res = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ restaurant: slug, items: lines.map((l) => ({ id: l.id, qty: l.qty })), address: { line1: f.line1, landmark: f.landmark, areaSlug: f.area, pincode: areas.find((x) => x.slug === f.area)?.pincode || "", lat: pos?.lat, lng: pos?.lng }, name: f.name, phone: f.phone, notes: f.notes, method }) });
       const r = await res.json();
       if (!r.ok) { setErr(res.status === 401 ? "Please sign in again." : ERR[r.error] || "Could not place the order. Please try again."); setBusy(false); return; }
       if (method === "cod") { clear(); window.location.href = `/order/${r.code}`; return; }
@@ -36,7 +36,7 @@ export default function CheckoutForm({ areas, defaults, cod, online, email }: { 
       <div><label className="label">Mobile number</label><input className="input" inputMode="tel" value={f.phone} onChange={(e) => set("phone", e.target.value)} autoComplete="tel" /></div>
       <div className="sm:col-span-2"><label className="label">Flat, building, street</label><input className="input" value={f.line1} onChange={(e) => set("line1", e.target.value)} autoComplete="street-address" /></div>
       <div><label className="label">Landmark (optional)</label><input className="input" value={f.landmark} onChange={(e) => set("landmark", e.target.value)} /></div>
-      <div><label className="label">Area</label><select className="input" value={f.area} onChange={(e) => set("area", e.target.value)}><option value="">Select area</option>{areas.map((a) => <option key={a.slug} value={a.slug}>{a.name}</option>)}</select></div>
+      <div><label className="label">Area</label><select className="input" value={f.area} onChange={(e) => set("area", e.target.value)}><option value="">Select area</option>{areas.map((a) => <option key={a.slug} value={a.slug}>{a.name}{a.pincode ? ` · ${a.pincode}` : ""}</option>)}</select></div>
       <div className="sm:col-span-2"><button type="button" onClick={locate} className="text-sm font-extrabold text-chilli">{pos ? "✓ Using your exact location (more accurate delivery fee)" : "📍 Use my exact location for a more accurate fee"}</button></div>
       <div className="sm:col-span-2"><label className="label">Note for the restaurant (optional)</label><input className="input" value={f.notes} onChange={(e) => set("notes", e.target.value)} maxLength={300} placeholder="Less spicy, no onion…" /></div></div></section>
     <section className="card p-5"><h2 className="text-2xl">Payment</h2><div className="mt-3 grid gap-3 sm:grid-cols-2">

@@ -1,6 +1,6 @@
 "use server";
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { db } from "@/lib/db";
 import { authClient } from "@/lib/supabase-server";
 import { allow } from "@/lib/ratelimit";
@@ -11,7 +11,9 @@ const safeNext = (n: string) => (n.startsWith("/") && !n.startsWith("//") ? n : 
 export async function login(fd: FormData) {
   const next = safeNext(clean(fd.get("next"), 200) || "/account");
   if (!(await allow("login", 15, 600))) redirect(`/login?e=rate&next=${encodeURIComponent(next)}`);
-  const { error } = await (await authClient()).auth.signInWithPassword({ email: clean(fd.get("email"), 120).toLowerCase(), password: String(fd.get("password") || "") });
+  const em = clean(fd.get("email"), 120).toLowerCase();
+  if (!(await allow("loginmail", 8, 600, em))) redirect(`/login?e=rate&next=${encodeURIComponent(next)}`); // per-email limit: stops guessing from many IPs
+  const { error } = await (await authClient()).auth.signInWithPassword({ email: em, password: String(fd.get("password") || "") });
   if (error) redirect(`/login?e=bad&next=${encodeURIComponent(next)}`);
   redirect(next);
 }
@@ -64,4 +66,22 @@ export async function setLang(fd: FormData) {
   const v = String(fd.get("lang") || "en"), lang = v === "hi" || v === "gu" ? v : "en";
   (await cookies()).set("jv_lang", lang, { path: "/", maxAge: 31536000, sameSite: "lax" });
   redirect(safeNext(clean(fd.get("next"), 200) || "/"));
+}
+
+/** Password recovery step 1: Supabase emails a reset link. The answer is always the same so nobody can discover which emails have accounts. */
+export async function requestReset(fd: FormData) {
+  if (!(await allow("reset", 5, 3600))) redirect("/forgot?e=rate");
+  const email = clean(fd.get("email"), 120).toLowerCase();
+  if (email.includes("@")) {
+    const h = await headers(); const origin = process.env.NEXT_PUBLIC_SITE_URL || `https://${h.get("x-forwarded-host") || h.get("host")}`;
+    try { await (await authClient()).auth.resetPasswordForEmail(email, { redirectTo: `${origin}/auth/callback?next=/reset` }); } catch (e: any) { console.error("[reset] failed:", e?.message || e); }
+  }
+  redirect("/forgot?sent=1");
+}
+/** Password recovery step 2: the signed-in (via link) user picks a new password. */
+export async function setNewPassword(fd: FormData) {
+  const pw = String(fd.get("password") || ""); if (pw.length < 8 || pw !== String(fd.get("again") || "")) redirect("/reset?e=invalid");
+  const { error } = await (await authClient()).auth.updateUser({ password: pw });
+  if (error) redirect("/reset?e=expired");
+  redirect("/account?pw=1");
 }

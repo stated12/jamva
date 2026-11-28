@@ -24,7 +24,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ e
         <div className="sm:col-span-2"><label className="label">One-line description</label><input name="tagline" maxLength={100} className="input" placeholder="Authentic Gujarati thali since 1998" /></div>
         <div className="sm:col-span-2"><label className="label">Cuisines (comma separated)</label><input name="cuisines" className="input" placeholder="Gujarati, North Indian, Street food" /></div>
         <div className="sm:col-span-2"><label className="label">Full address *</label><input name="address" required className="input" /></div>
-        <div><label className="label">Area *</label><select name="area" required className="input" defaultValue=""><option value="" disabled>Select area</option>{areas.map((a: any) => <option key={a.slug} value={a.slug}>{a.name}</option>)}</select></div>
+        <div><label className="label">Area *</label><select name="area" required className="input" defaultValue=""><option value="" disabled>Select area</option>{areas.map((a: any) => <option key={a.slug} value={a.slug}>{a.name}{a.pincode ? ` · ${a.pincode}` : ""}</option>)}</select></div>
         <div><label className="label">Restaurant phone *</label><input name="phone" required inputMode="tel" className="input" /></div>
         <div><label className="label">WhatsApp for orders (if different)</label><input name="whatsapp" inputMode="tel" className="input" /></div>
         <div><label className="label">Contact email</label><input name="contact_email" type="email" className="input" /></div>

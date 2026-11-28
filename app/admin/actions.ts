@@ -25,7 +25,7 @@ export async function restaurantDecision(fd: FormData) {
 export async function adminOrderAction(fd: FormData) {
   await requireAdmin(); const id = clean(fd.get("id"), 40), act = clean(fd.get("act"), 20);
   if (act === "refund") await refundOrder(id);
-  else if (["picked_up", "delivered", "cancelled"].includes(act)) await setOrderStatus(id, act, act === "cancelled" ? "Cancelled by Jamva support" : undefined);
+  else if (["picked_up", "delivered", "cancelled"].includes(act)) await setOrderStatus(id, act, act === "cancelled" ? "Cancelled by Jamva support" : undefined, true);
   revalidatePath("/admin/orders");
 }
 export async function saveSettings(fd: FormData) {
