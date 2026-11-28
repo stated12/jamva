@@ -3,7 +3,7 @@ import { useState } from "react";
 import { updateLocation } from "@/app/partner/actions";
 /** Vendor taps once to move their pin to where the cart is now, optionally with a landmark line. */
 export default function LocationUpdate({ landmark, labels }: { landmark: string | null; labels?: { title: string; sub: string; btn: string; ok: string } }) {
-  const L = labels || { title: "Cart location", sub: "Move your pin whenever the cart moves. Add a landmark so customers find you.", btn: "📍 Update my location now", ok: L.ok };
+  const L = labels || { title: "Cart location", sub: "Move your pin whenever the cart moves. Add a landmark so customers find you.", btn: "📍 Update my location now", ok: "Location updated." };
   const [msg, setMsg] = useState(""); const [busy, setBusy] = useState(false); const [lm, setLm] = useState(landmark || "");
   function go() {
     if (!navigator.geolocation) return setMsg("This phone cannot share its location.");
