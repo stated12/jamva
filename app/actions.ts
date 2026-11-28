@@ -1,5 +1,6 @@
 "use server";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 import { authClient } from "@/lib/supabase-server";
 import { allow } from "@/lib/ratelimit";
@@ -58,4 +59,9 @@ export async function saveLead(fd: FormData) {
   await db().from("waitlist").insert({ name, phone, kind: role, city: geo.name, pincode: pin || null, area_slug: clean(fd.get("area"), 60) || null, details, status: "new" });
   await notifyAdmins({ title: `New ${role} lead: ${geo.name}`, body: `${name} · ${phone}`, href: "/admin/leads" });
   redirect(`/joined?city=${encodeURIComponent(geo.name)}&role=${role}&live=${geo.live ? 1 : 0}`);
+}
+export async function setLang(fd: FormData) {
+  const v = String(fd.get("lang") || "en"), lang = v === "hi" || v === "gu" ? v : "en";
+  (await cookies()).set("jv_lang", lang, { path: "/", maxAge: 31536000, sameSite: "lax" });
+  redirect(safeNext(clean(fd.get("next"), 200) || "/"));
 }
