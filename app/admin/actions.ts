@@ -7,6 +7,9 @@ import { getListing, getVendorListing } from "@/lib/pricing";
 import { notify } from "@/lib/notify";
 import { refundOrder, setOrderStatus } from "@/lib/orders";
 import { announceToDrivers } from "@/lib/drivers";
+import { reconcilePayments } from "@/lib/payments";
+/** Admin button: ask Razorpay about recent unpaid payments and settle any that were really paid. */
+export async function reconcileNow() { await requireAdmin(); await reconcilePayments(); revalidatePath("/admin/health"); }
 export async function restaurantDecision(fd: FormData) {
   await requireAdmin(); const id = clean(fd.get("id"), 40), act = clean(fd.get("act"), 20), note = clean(fd.get("note"), 300) || null;
   const { data: r } = await db().from("restaurants").select("id,name,owner_id,trial_until,kind").eq("id", id).maybeSingle(); if (!r) return;

@@ -9,8 +9,9 @@ export async function markOrderPaid(orderId: string, paymentId: string) {
     await db().from("orders").update({ payment_status: "paid", razorpay_payment_id: paymentId }).eq("id", orderId); await refundOrder(orderId); return;
   }
   if (!o || o.status !== "pending_payment") return;
-  const { error } = await db().from("orders").update({ status: "placed", payment_status: "paid", razorpay_payment_id: paymentId, placed_at: new Date().toISOString() }).eq("id", orderId).eq("status", "pending_payment");
-  if (error) return;
+  const { data: moved, error } = await db().from("orders").update({ status: "placed", payment_status: "paid", razorpay_payment_id: paymentId, placed_at: new Date().toISOString() }).eq("id", orderId).eq("status", "pending_payment").select("id");
+  if (error) throw new Error("order update failed: " + error.message); // makes the webhook fail so Razorpay retries it
+  if (!moved?.length) return; // someone else already did this step
   await db().from("order_events").insert({ order_id: orderId, status: "placed", note: "Paid online" });
   await announceNewOrder(o);
 }
@@ -25,9 +26,16 @@ import { refundRzpPayment } from "./razorpay";
 /** Refunds a paid online order in full via Razorpay. If that fails the order is flagged refund_due so an admin can retry. */
 export async function refundOrder(orderId: string) {
   const { data: o } = await db().from("orders").select("id,payment_method,payment_status,razorpay_payment_id,total_paise,code").eq("id", orderId).maybeSingle();
-  if (!o || o.payment_method !== "online" || o.payment_status !== "paid" || !o.razorpay_payment_id) return;
-  try { await refundRzpPayment(o.razorpay_payment_id, o.total_paise / 100, { order: o.code }); await db().from("orders").update({ payment_status: "refunded" }).eq("id", orderId); await db().from("payments").update({ status: "refunded" }).eq("order_id", orderId); }
-  catch { await db().from("orders").update({ payment_status: "refund_due" }).eq("id", orderId); }
+  if (!o || o.payment_method !== "online" || !["paid", "refund_due"].includes(o.payment_status) || !o.razorpay_payment_id) return; // refund_due can be retried
+  try {
+    const rf = await refundRzpPayment(o.razorpay_payment_id, o.total_paise / 100, { order: o.code });
+    await db().from("orders").update({ payment_status: "refunded" }).eq("id", orderId).in("payment_status", ["paid", "refund_due"]); await db().from("payments").update({ status: "refunded" }).eq("order_id", orderId);
+    return rf?.id as string | undefined;
+  } catch (e: any) {
+    // Razorpay says the payment is already fully refunded (earlier attempt succeeded but we missed the reply): treat as done.
+    if (/already.*refund|fully refunded/i.test(String(e?.message))) { await db().from("orders").update({ payment_status: "refunded" }).eq("id", orderId); await db().from("payments").update({ status: "refunded" }).eq("order_id", orderId); return; }
+    console.error("[refund] failed", o.code, e?.message); await db().from("orders").update({ payment_status: "refund_due" }).eq("id", orderId);
+  }
 }
 /** Which current statuses may move to each new status. The update below only matches those rows, so two taps or two devices can never apply the same step twice. */
 const FROM: Record<string, string[]> = { accepted: ["placed"], preparing: ["accepted"], ready: ["accepted", "preparing"], picked_up: ["ready"], delivered: ["picked_up"], rejected: ["placed"], cancelled: ["pending_payment", "placed", "accepted", "preparing", "ready", "picked_up"] };
