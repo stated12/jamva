@@ -8,7 +8,7 @@ import InstallApp from "@/components/InstallApp";
 import { getT } from "@/lib/i18n";
 import { orderAction, toggleOpen, updateRestaurant } from "../actions";
 import NewOrderAlert from "@/components/NewOrderAlert";
-import AutoRefresh from "@/components/AutoRefresh";
+import RealtimeRefresh from "@/components/RealtimeRefresh";
 import PushButton from "@/components/PushButton";
 import ListingPay from "@/components/PayButton";
 export const metadata = { title: "Restaurant dashboard" };
@@ -28,7 +28,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ w
     {o.drivers && !["delivered", "cancelled", "rejected"].includes(o.status) && <p className="mt-2 rounded-lg bg-leaf-soft p-2 text-sm font-semibold text-leaf">Rider: {o.drivers.name} · <a className="underline" href={`tel:${o.drivers.phone}`}>{o.drivers.phone}</a></p>}
     {["placed", "accepted", "preparing", "ready", "picked_up"].includes(o.status) && <form action={orderAction} className="mt-3 flex flex-wrap gap-2"><input type="hidden" name="id" value={o.id} />
       {STEPK[o.status] && <button name="act" value="next" className="btn btn-green !py-2 text-sm">{t(STEPK[o.status])}</button>}{o.status === "ready" && <button name="act" value="pickup" className="btn btn-dark !py-2 text-sm">{o.drivers ? "Handed to rider" : "Handed to rider (own delivery)"}</button>}{o.status === "picked_up" && <button name="act" value="delivered" className="btn btn-dark !py-2 text-sm">{t("p_mark_deliv")}</button>}{o.status === "placed" && <button name="act" value="reject" className="btn btn-line !py-2 text-sm">{t("p_decline")}</button>}</form>}</li>);
-  return (<div className="wrap max-w-3xl py-8"><AutoRefresh every={60000} />
+  return (<div className="wrap max-w-3xl py-8"><RealtimeRefresh subs={[{ table: "jm_orders", filter: `restaurant_id=eq.${r.id}` }]} fast={20000} slow={120000} labels={{ live: t("rt_live"), reconnecting: t("rt_reconnecting") }} />
     <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="kicker">{vendor ? "Street vendor dashboard" : "Restaurant dashboard"}</p><h1 className="text-3xl md:text-4xl">{r.name}</h1></div>
       {r.status === "approved" && <form action={toggleOpen}><button className={`btn ${r.is_open ? "btn-green" : "btn-line"}`}>{r.is_open ? t("p_open_btn") : t("p_closed_btn")}</button></form>}</div>
     {sp.welcome && <p className="mt-4 rounded-xl bg-leaf-soft p-3 font-semibold text-leaf">Application received. We will verify your FSSAI details and approve you shortly. You will get an alert.</p>}{sp.saved && <p className="mt-4 rounded-xl bg-leaf-soft p-3 font-semibold text-leaf">Saved.</p>}{sp.paid && <p className="mt-4 rounded-xl bg-leaf-soft p-3 font-semibold text-leaf">Payment received. Your listing will update in a moment.</p>}

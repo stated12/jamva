@@ -13,7 +13,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ e
   return (<div className="max-w-2xl"><p className="kicker">{t("r_kicker")}</p><h1 className="text-4xl">{t("r_title")}</h1><p className="mt-2 text-muted">{t("r_sub")}</p>
     {sp.e && <p className="mt-4 rounded-xl bg-soft p-3 text-sm font-semibold text-chilli">{MSG[sp.e] || MSG.invalid} {sp.e === "exists" && <Link href="/login?next=/driver/register" className="underline">Sign in</Link>}</p>}
     <div className="mt-6"><CityPicker action="/driver/register" current={geo.name} cities={cities} t={t} /></div>
-    {!geo.live ? <LeadForm role="driver" city={geo.name} t={t} /> :
+    {!geo.live ? <LeadForm role="driver" city={geo.name} t={t} areas={(await listAreas(geo.slug).catch(() => [])).map((a: any) => ({ name: a.name, pincode: a.pincode }))} /> :
     <form action={registerDriver} className="mt-6 space-y-6"><input type="hidden" name="city" value={geo.name} />
       {!user ? <section className="card p-5"><h2 className="text-2xl">{t("f_login")}</h2><div className="mt-4 grid gap-3 sm:grid-cols-2"><div><label className="label">{t("f_email")} *</label><input name="email" type="email" required className="input" autoComplete="email" /></div><div><label className="label">{t("f_password")} *</label><input name="password" type="password" required minLength={8} className="input" autoComplete="new-password" /></div></div></section>
         : <p className="card p-4 text-sm font-semibold">Signed in as {user.email}. The rider profile will be linked to this account.</p>}

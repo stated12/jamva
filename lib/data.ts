@@ -27,8 +27,14 @@ export async function getRestaurant(slug: string) {
 }
 let healed = false;
 /** Active areas, A to Z. If the database has fewer areas than the built-in Ahmedabad list (114 localities with pincodes), the missing ones are added once, so registration forms are always complete. */
-export async function listAreas(): Promise<any[]> {
-  const read = async () => { const { data, error } = await db().from("areas").select("*").eq("is_active", true).order("name"); if (error) console.error("[areas] read failed:", error.message); return data || []; };
+export async function listAreas(city = "ahmedabad"): Promise<any[]> {
+  const read = async () => {
+    let r = await db().from("areas").select("*").eq("is_active", true).eq("city_slug", city).order("name");
+    if (r.error) r = await db().from("areas").select("*").eq("is_active", true).order("name"); // city_slug column not added yet (run 07_cities_areas.sql): Ahmedabad list only
+    if (r.error) console.error("[areas] read failed:", r.error.message);
+    return r.data || [];
+  };
+  if (city !== "ahmedabad") { try { return await read(); } catch { return []; } }
   let rows: any[] = [];
   try { rows = await read(); } catch (e: any) { console.error("[areas]", e?.message || e); }
   if (rows.length < SEED_AREAS.length && !healed) {
@@ -62,9 +68,9 @@ export async function listCities(): Promise<City[]> {
   return rows;
 }
 /** Works out which city a person chose (free text from a searchable list) and whether Jamva is live there. */
-export async function resolveCity(input: string | null | undefined): Promise<{ name: string; live: boolean; known: boolean }> {
+export async function resolveCity(input: string | null | undefined): Promise<{ name: string; slug: string; live: boolean; known: boolean }> {
   const raw = (input || "").trim().slice(0, 60) || "Ahmedabad";
   const cities = await listCities();
   const hit = cities.find((c) => c.name.toLowerCase() === raw.toLowerCase() || c.slug === raw.toLowerCase());
-  return hit ? { name: hit.name, live: hit.status === "live", known: true } : { name: raw, live: false, known: false };
+  return hit ? { name: hit.name, slug: hit.slug, live: hit.status === "live", known: true } : { name: raw, slug: "", live: false, known: false };
 }

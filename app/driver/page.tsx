@@ -2,7 +2,8 @@ import { db } from "@/lib/db";
 import { requireDriver, riderPay, getDriverCfg, ACTIVE_STATUSES } from "@/lib/drivers";
 import { rupees, dateFmt, STATUS_LABEL } from "@/lib/format";
 import { claimOrder, driverAction, toggleOnline } from "./actions";
-import AutoRefresh from "@/components/AutoRefresh";
+import RealtimeRefresh from "@/components/RealtimeRefresh";
+import GpsReporter from "@/components/GpsReporter";
 import JobAlert from "@/components/JobAlert";
 import PushButton from "@/components/PushButton";
 import { getT } from "@/lib/i18n";
@@ -16,7 +17,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ w
   const { data: open } = d.is_online ? await db().from("orders").select("id,code,status,distance_km,delivery_fee_paise,payment_method,total_paise,address,restaurants:jm_restaurants(name,address)").is("driver_id", null).in("status", ["accepted", "preparing", "ready"]).order("created_at").limit(20) : { data: [] };
   const mineIds = (mine || []).map((o: any) => o.id); const { data: its } = mineIds.length ? await db().from("order_items").select("order_id,name,qty").in("order_id", mineIds) : { data: [] };
   const holding = (mine || []).length, full = holding >= (cfg.max_active || 2);
-  return (<div><AutoRefresh every={30000} /><JobAlert initial={(open || []).length} />
+  return (<div><RealtimeRefresh subs={[{ table: "jm_job_signals" }, { table: "jm_orders", filter: `driver_id=eq.${d.id}` }]} fast={20000} slow={120000} labels={{ live: t("rt_live"), reconnecting: t("rt_reconnecting") }} /><GpsReporter active={holding > 0} labels={{ sharing: t("gps_sharing"), blocked: t("gps_blocked"), offline: t("gps_offline"), unsupported: t("gps_unsupported"), searching: t("gps_searching") }} /><JobAlert initial={(open || []).length} />
     <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="kicker">{t("ra_hello")}, {d.name}</p><h1 className="text-3xl">{d.is_online ? t("ra_online") : t("ra_offline")}</h1></div>
       <form action={toggleOnline}><button className={`btn ${d.is_online ? "btn-green" : "btn-line"}`}>{d.is_online ? t("ra_go_off") : t("ra_go_on")}</button></form></div>
     {sp.welcome && <p className="mt-4 rounded-xl bg-leaf-soft p-3 font-semibold text-leaf">Application received. We will approve you shortly.</p>}{sp.taken && <p className="mt-4 rounded-xl bg-leaf-soft p-3 font-semibold text-leaf">Delivery assigned to you. Head to the restaurant.</p>}{sp.e && <p className="mt-4 rounded-xl bg-soft p-3 text-sm font-semibold text-chilli">{MSG[sp.e] || "Something went wrong. Please try again."}</p>}

@@ -15,7 +15,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ e
   return (<div className="wrap max-w-2xl py-12"><p className="kicker">{t("v_kicker")}</p><h1 className="text-4xl">{t("v_title")}</h1><p className="mt-2 text-muted">{t("v_sub", { days: v.trial_days, monthly: v.monthly_fee, yearly: v.yearly_fee })}</p>
     {sp.e && <p className="mt-4 rounded-xl bg-soft p-3 text-sm font-semibold text-chilli">{MSG[sp.e] || MSG.invalid} {sp.e === "exists" && <Link href="/login?next=/street-vendors/join" className="underline">Sign in</Link>}</p>}
     <div className="mt-6"><CityPicker action="/street-vendors/join" current={geo.name} cities={cities} t={t} /></div>
-    {!geo.live ? <LeadForm role="vendor" city={geo.name} t={t} /> :
+    {!geo.live ? <LeadForm role="vendor" city={geo.name} t={t} areas={(await listAreas(geo.slug).catch(() => [])).map((a: any) => ({ name: a.name, pincode: a.pincode }))} /> :
     <form action={registerVendor} className="mt-6 space-y-6"><input type="hidden" name="city" value={geo.name} />
       <section className="card p-5"><h2 className="text-2xl">{t("v_cart")}</h2><div className="mt-4 grid gap-3 sm:grid-cols-2">
         <div className="sm:col-span-2"><label className="label">{t("v_stall")} *</label><input name="name" required className="input" placeholder="Raju Pav Bhaji" /></div>

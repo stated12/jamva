@@ -172,6 +172,17 @@ const D: Record<string, [string, string, string]> = {
   rp_title: ["Choose a new password", "नया पासवर्ड चुनें", "નવો પાસવર્ડ પસંદ કરો"],
   rp_again: ["Type it again", "फिर से लिखें", "ફરીથી લખો"],
   rp_btn: ["Save password", "पासवर्ड सहेजें", "પાસવર્ડ સાચવો"],
+  rt_live: ["Live", "लाइव", "લાઇવ"],
+  rt_reconnecting: ["Reconnecting…", "फिर से जुड़ रहा है…", "ફરી જોડાઈ રહ્યું છે…"],
+  gps_sharing: ["Sharing your live location with the customer.", "ग्राहक के साथ आपकी लाइव लोकेशन शेयर हो रही है।", "ગ્રાહક સાથે તમારું લાઇવ લોકેશન શેર થઈ રહ્યું છે."],
+  gps_blocked: ["Location is blocked. Allow location for this app in your phone settings.", "लोकेशन बंद है। फ़ोन सेटिंग में इस ऐप के लिए लोकेशन की अनुमति दें।", "લોકેશન બંધ છે. ફોન સેટિંગમાં આ એપ માટે લોકેશનની પરવાનગી આપો."],
+  gps_offline: ["No internet. Your location will be sent as soon as you are back online.", "इंटरनेट नहीं है। नेटवर्क आते ही आपकी लोकेशन भेज दी जाएगी।", "ઇન્ટરનેટ નથી. નેટવર્ક આવતા જ તમારું લોકેશન મોકલાશે."],
+  gps_unsupported: ["This phone cannot share its location.", "यह फ़ोन लोकेशन शेयर नहीं कर सकता।", "આ ફોન લોકેશન શેર કરી શકતો નથી."],
+  gps_searching: ["Finding your location…", "आपकी लोकेशन ढूँढ रहे हैं…", "તમારું લોકેશન શોધી રહ્યા છીએ…"],
+  map_title: ["Your rider on the map", "मैप पर आपका राइडर", "નકશા પર તમારો રાઇડર"],
+  map_waiting: ["Waiting for the rider's location…", "राइडर की लोकेशन का इंतज़ार…", "રાઇડરના લોકેશનની રાહ…"],
+  map_updated: ["Updated {s} seconds ago", "{s} सेकंड पहले अपडेट हुआ", "{s} સેકન્ડ પહેલા અપડેટ થયું"],
+  map_paused: ["Rider location paused. It will resume shortly.", "राइडर की लोकेशन रुकी है। जल्द ही फिर शुरू होगी।", "રાઇડરનું લોકેશન અટક્યું છે. થોડીવારમાં ફરી શરૂ થશે."],
 };
 export function makeT(lang: Lang): T {
   const i = lang === "hi" ? 1 : lang === "gu" ? 2 : 0;
